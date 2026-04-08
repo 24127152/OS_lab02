@@ -223,7 +223,7 @@ class MainScene(tk.Frame):
         self.result_text.insert(tk.END, "\n".join(logs))
 
 
-#Lớp app quảng lý scene
+#Lớp app quản lý scene
 class App(tk.Tk):
     def __init__(self):
         super().__init__()

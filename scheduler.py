@@ -112,6 +112,7 @@ def build_queue_lookup(queue_info):
         for queue in queue_info
     }
 
+#Load file txt input.txt
 def load_lab01_from_txt_file(reader, txt_path):
     txt_files = reader.list_all_txt_files()
     selected = next((item for item in txt_files if item.get('path') == txt_path), None)
@@ -298,37 +299,154 @@ def run_srtn_algorithm(process_table, start_time=0):
 
 def schedule_by_queues(queue_info, process_table):
     normalized_queues = normalize_queue_info(queue_info)
-    normalized_processes = normalize_process_table(process_table)
-    queue_groups = build_queue_groups(normalized_queues, normalized_processes)
+    base_processes = normalize_process_table(process_table)
+
+    queue_index_map = {queue['queue_id']: index for index, queue in enumerate(normalized_queues)}
+
+    normalized_processes = []
+    for process in base_processes:
+        queue_id = process.get('queue_id')
+        queue_index = queue_index_map.get(queue_id, len(normalized_queues))
+        normalized_processes.append({
+            **process,
+            'remaining_time': process['burst_time'],
+            'start_time': None,
+            'end_time': None,
+            'current_queue_level': queue_index + 1,
+        })
 
     timeline = []
-    completion_times = {}
-    current_time = 0
-    queue_results = []
+    queue_results = [
+        {
+            'queue_id': queue['queue_id'],
+            'algorithm': queue['algorithm'].upper(),
+            'time_slice': queue['time_slice'],
+            'timeline': [],
+            'completion_times': {},
+        }
+        for queue in normalized_queues
+    ]
 
-    for queue_group in queue_groups:
-        queue_processes = queue_group['processes']
-        if not queue_processes:
+    if not normalized_queues or not normalized_processes:
+        return {
+            'queue_info': normalized_queues,
+            'process_table': normalized_processes,
+            'queue_results': queue_results,
+            'timeline': [],
+            'completion_times': {},
+            'waiting_times': {},
+            'turnaround_times': {},
+            'average_waiting_time': 0,
+            'average_turnaround_time': 0,
+        }
+
+    completed = 0
+    current_time = 0
+    current_process_index = -1
+    segment_start_time = 0
+
+    current_queue_index = 0
+    queue_time_remaining = normalized_queues[current_queue_index]['time_slice']
+    locked_process_index = -1
+
+    while completed < len(normalized_processes):
+        idx = -1
+
+        if (
+            locked_process_index != -1
+            and normalized_processes[locked_process_index]['remaining_time'] > 0
+            and normalized_processes[locked_process_index]['arrival_time'] <= current_time
+            and normalized_processes[locked_process_index]['current_queue_level'] == (current_queue_index + 1)
+        ):
+            idx = locked_process_index
+        else:
+            locked_process_index = -1
+
+            for i, process in enumerate(normalized_processes):
+                if (
+                    process['arrival_time'] > current_time
+                    or process['remaining_time'] <= 0
+                    or process['current_queue_level'] != (current_queue_index + 1)
+                ):
+                    continue
+
+                if idx == -1:
+                    idx = i
+                    continue
+
+                # Q1: SRTN (preemptive theo remaining_time)
+                if current_queue_index == 0:
+                    if process['remaining_time'] < normalized_processes[idx]['remaining_time']:
+                        idx = i
+                    elif (
+                        process['remaining_time'] == normalized_processes[idx]['remaining_time']
+                        and process['arrival_time'] < normalized_processes[idx]['arrival_time']
+                    ):
+                        idx = i
+                # SJF non-preemptive trong lượt queue
+                else:
+                    if process['burst_time'] < normalized_processes[idx]['burst_time']:
+                        idx = i
+                    elif (
+                        process['burst_time'] == normalized_processes[idx]['burst_time']
+                        and process['arrival_time'] < normalized_processes[idx]['arrival_time']
+                    ):
+                        idx = i
+
+            if idx != -1 and current_queue_index > 0:
+                locked_process_index = idx
+
+        if idx == -1 or queue_time_remaining == 0:
+            current_queue_index = (current_queue_index + 1) % len(normalized_queues)
+            queue_time_remaining = normalized_queues[current_queue_index]['time_slice']
+            locked_process_index = -1
             continue
 
-        algorithm = queue_group['algorithm'].upper()
-        if algorithm == 'SJF':
-            result = run_sjf_algorithm(queue_processes, start_time=current_time)
-        elif algorithm in ('SRTN', 'SRTF'):
-            result = run_srtn_algorithm(queue_processes, start_time=current_time)
-        else:
-            raise ValueError(f"Unsupported algorithm: {algorithm}")
+        if idx != current_process_index:
+            if current_process_index != -1:
+                timeline.append({
+                    'pid': normalized_processes[current_process_index]['process_id'],
+                    'start': segment_start_time,
+                    'end': current_time,
+                })
+            current_process_index = idx
+            segment_start_time = current_time
 
-        queue_results.append({
-            'queue_id': queue_group['queue_id'],
-            'algorithm': algorithm,
-            'time_slice': queue_group['time_slice'],
-            'timeline': result['timeline'],
-        })
-        timeline.extend(result['timeline'])
-        completion_times.update(result['completion_times'])
-        if timeline:
-            current_time = timeline[-1]['end']
+        process = normalized_processes[idx]
+        if process['start_time'] is None:
+            process['start_time'] = current_time
+
+        process['remaining_time'] -= 1
+        current_time += 1
+        queue_time_remaining -= 1
+
+        finished = process['remaining_time'] == 0
+        queue_slice_ended = queue_time_remaining == 0
+
+        if finished or queue_slice_ended:
+            timeline.append({
+                'pid': process['process_id'],
+                'start': segment_start_time,
+                'end': current_time,
+            })
+            current_process_index = -1
+            segment_start_time = current_time
+
+            if finished:
+                process['end_time'] = current_time
+                completed += 1
+                locked_process_index = -1
+
+            if queue_slice_ended:
+                current_queue_index = (current_queue_index + 1) % len(normalized_queues)
+                queue_time_remaining = normalized_queues[current_queue_index]['time_slice']
+                locked_process_index = -1
+
+    completion_times = {
+        process['process_id']: process['end_time']
+        for process in normalized_processes
+        if process['end_time'] is not None
+    }
 
     turnaround_times = compute_turnaround_times(normalized_processes, completion_times)
     waiting_times = compute_waiting_times(normalized_processes, turnaround_times)
@@ -404,15 +522,15 @@ def render_ascii_gantt_chart(timeline):
         "".join(time_line_parts),
     ])
 
-def print_process_metrics(process_table, waiting_times, turnaround_times, print_fn=print):
-    header = f"{'PID':<10}{'AT':<8}{'BT':<8}{'WT':<8}{'TAT':<8}"
+def print_process_metrics(process_table, waiting_times, completion_times, turnaround_times, print_fn=print):
+    header = f"{'Process':<10}{'Arrival Time':<12}{'Burst Time':<12}{'Completion Time':<18}{'Turnaround Time':<18}{'Waiting Time':<15}"
     print_fn(header)
     print_fn('-' * len(header))
     for process in process_table:
         pid = process['process_id']
         print_fn(
-            f"{pid:<10}{process['arrival_time']:<8}{process['burst_time']:<8}"
-            f"{waiting_times.get(pid, 0):<8}{turnaround_times.get(pid, 0):<8}"
+            f"{pid:<10}{process['arrival_time']:<12}{process['burst_time']:<12}"
+            f"{completion_times.get(pid, 0):<18}{turnaround_times.get(pid, 0):<18}{waiting_times.get(pid, 0):<15}"
         )
 
 def print_schedule_result(schedule_result, print_fn=print):
@@ -429,10 +547,11 @@ def print_schedule_result(schedule_result, print_fn=print):
                 f"(time slice={queue_result['time_slice']})"
             )
 
-    print_fn("\nProcess Metrics")
+    print_fn("\nProcess Statistics")
     print_process_metrics(
         schedule_result['process_table'],
         schedule_result['waiting_times'],
+        schedule_result['completion_times'],
         schedule_result['turnaround_times'],
         print_fn=print_fn,
     )
