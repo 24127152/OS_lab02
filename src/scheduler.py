@@ -522,15 +522,28 @@ def render_ascii_gantt_chart(timeline):
         "".join(time_line_parts),
     ])
 
-def print_process_metrics(process_table, waiting_times, completion_times, turnaround_times, print_fn=print):
-    header = f"{'Process':<10}{'Queue ID':<10}{'Arrival Time':<15}{'Burst Time':<15}{'Completion Time':<18}{'Turnaround Time':<18}{'Waiting Time':<15}"
+def print_process_metrics(process_table, waiting_times, completion_times, turnaround_times, queue_info=None, print_fn=print):
+    header = f"{'Process':<10}{'Queue ID':<10}{'Arrival Time':<15}{'Burst Time':<15}{'Completion Time':<18}{'Turnaround Time':<18}{'Waiting Time':<15}{'Algorithm':<15}"
     print_fn(header)
     print_fn('-' * len(header))
+
+    #Lấy thông tin queue vào một dict để tra cứu nhanh thuật toán của queue
+    if isinstance(queue_info, dict):
+        queue_lookup = queue_info
+    else:
+        queue_lookup = {
+            queue.get('queue_id'): queue
+            for queue in (queue_info or [])
+            if isinstance(queue, dict)
+        }
+
     for process in process_table:
         pid = process['process_id']
+        #Thuật toán của queue tương ứng
+        algorithm = queue_lookup.get(process['queue_id'], {}).get('algorithm', 'N/A')
         print_fn(
             f"{pid:<10}{process['queue_id']:<10}{process['arrival_time']:<15}{process['burst_time']:<15}"
-            f"{completion_times.get(pid, 0):<18}{turnaround_times.get(pid, 0):<18}{waiting_times.get(pid, 0):<15}"
+            f"{completion_times.get(pid, 0):<18}{turnaround_times.get(pid, 0):<18}{waiting_times.get(pid, 0):<15}{algorithm:<15}"
         )
 
 def print_schedule_result(schedule_result, print_fn=print):
@@ -553,7 +566,9 @@ def print_schedule_result(schedule_result, print_fn=print):
         schedule_result['waiting_times'],
         schedule_result['completion_times'],
         schedule_result['turnaround_times'],
+        schedule_result.get('queue_info', {}),
         print_fn=print_fn,
+        
     )
     print_fn(f"\nAverage Waiting Time: {schedule_result['average_waiting_time']:.2f}")
     print_fn(f"Average Turnaround Time: {schedule_result['average_turnaround_time']:.2f}")
