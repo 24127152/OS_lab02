@@ -4,6 +4,7 @@ from tkinter import filedialog, messagebox, ttk
 from fat32_reader import FAT32Reader
 from scheduler import run_scheduler_for_selected_txt
 from StartMenuScene import StartMenuScene
+
 #MainScene chứa giao diện chính của ứng dụng, cho phép người dùng tải ảnh FAT32, xem thông tin boot sector, danh sách file .txt và chạy scheduler trên file đã chọn
 class MainScene(tk.Frame):
     def __init__(self, parent, app):
@@ -124,11 +125,13 @@ class MainScene(tk.Frame):
         values = self.txt_tree.item(selected, "values")
         return values[0] if values else None
 
+    #Hàm xử lý nút browse
     def on_browse(self):
         path = filedialog.askopenfilename(title="Select FAT32 image", filetypes=[("Image files", "*.img")])
         if path:
             self.image_path_var.set(path)
 
+    #Hàm xử lý nút load
     def on_load(self):
         path = self.image_path_var.get().strip()
         if not path:
@@ -180,6 +183,7 @@ class MainScene(tk.Frame):
         self.result_text.delete("1.0", tk.END)
 
     def on_show_txt_details(self):
+        #Xử lý lỗi khi chi chọn ảnh nhưng chưa load
         if self.reader is None:
             messagebox.showwarning("Not Loaded", "Please load an image first.")
             return

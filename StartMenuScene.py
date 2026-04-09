@@ -1,8 +1,5 @@
 import tkinter as tk
 
-
-
-
 class StartMenuScene(tk.Frame):
     def __init__(self, parent, app):
         super().__init__(parent, bg="#1e1e1e")

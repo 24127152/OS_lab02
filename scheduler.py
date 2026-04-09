@@ -523,13 +523,13 @@ def render_ascii_gantt_chart(timeline):
     ])
 
 def print_process_metrics(process_table, waiting_times, completion_times, turnaround_times, print_fn=print):
-    header = f"{'Process':<10}{'Arrival Time':<12}{'Burst Time':<12}{'Completion Time':<18}{'Turnaround Time':<18}{'Waiting Time':<15}"
+    header = f"{'Process':<10}{'Queue ID':<10}{'Arrival Time':<15}{'Burst Time':<15}{'Completion Time':<18}{'Turnaround Time':<18}{'Waiting Time':<15}"
     print_fn(header)
     print_fn('-' * len(header))
     for process in process_table:
         pid = process['process_id']
         print_fn(
-            f"{pid:<10}{process['arrival_time']:<12}{process['burst_time']:<12}"
+            f"{pid:<10}{process['queue_id']:<10}{process['arrival_time']:<15}{process['burst_time']:<15}"
             f"{completion_times.get(pid, 0):<18}{turnaround_times.get(pid, 0):<18}{waiting_times.get(pid, 0):<15}"
         )
 
