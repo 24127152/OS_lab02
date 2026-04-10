@@ -7,6 +7,7 @@ from StartMenuScene import StartMenuScene
 
 #MainScene chứa giao diện chính của ứng dụng, cho phép người dùng tải ảnh FAT32, xem thông tin boot sector, danh sách file .txt và chạy scheduler trên file đã chọn
 class MainScene(tk.Frame):
+    #Khởi tạo MainScene với tham chiếu đến app để có thể chuyển đổi giữa các scene
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
@@ -34,7 +35,7 @@ class MainScene(tk.Frame):
         )
         if not save_path:
             return
-
+        #Lưu nội dung export vào file txt 
         export_text = (
             "Lab02 Scheduler Export\n"
             "=====================\n"
@@ -96,17 +97,20 @@ class MainScene(tk.Frame):
         self.txt_tree.column("size", width=80, anchor=tk.E)
         self.txt_tree.pack(fill=tk.BOTH, expand=True)
 
+        #Tạo các nút chức năng
         buttons = ttk.Frame(self, padding=10)
         buttons.pack(fill=tk.X)
         ttk.Button(buttons, text="Show TXT Details", command=self.on_show_txt_details).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Run Scheduler", command=self.on_run_scheduler).pack(side=tk.LEFT, padx=8)
         ttk.Button(buttons, text="Export Results", command=self.on_export_result).pack(side=tk.LEFT, padx=8)
-
+        
+        #khung hiển thị thông tin của fiel txt
         detail_box = ttk.LabelFrame(self, text="Selected TXT Details", padding=8)
         detail_box.pack(fill=tk.X, padx=10, pady=(0, 8))
         self.detail_var = tk.StringVar(value="No file selected.")
         ttk.Label(detail_box, textvariable=self.detail_var).pack(anchor=tk.W)
 
+        #Khung hiển thị kết quả chạy scheduler
         result_box = ttk.LabelFrame(self, text="Scheduler Output", padding=8)
         result_box.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         self.result_text = tk.Text(result_box, height=16, wrap=tk.NONE)
@@ -116,7 +120,7 @@ class MainScene(tk.Frame):
     def _clear_tree(self, tree):
         for item in tree.get_children():
             tree.delete(item)
-
+    #hàm lấy đường dẫn của file .txt được chọn trong Treeview
     def _selected_txt_path(self):
         selected_items = self.txt_tree.selection()
         selected = selected_items[0] if selected_items else self.txt_tree.focus()
@@ -198,12 +202,14 @@ class MainScene(tk.Frame):
             messagebox.showerror("Error", "Cannot load selected txt file details.")
             return
 
+        #Tập hợp thông tin chi tiết của file
         self.detail_var.set(
             f"Name: {details['name']} | Date: {details['created_date']} | "
             f"Time: {details['created_time']} | Size: {details['size']} bytes"
         )
 
     def on_run_scheduler(self):
+        #Xử lý lỗi 
         if self.reader is None:
             messagebox.showwarning("Not Loaded", "Please load an image first.")
             return
@@ -214,7 +220,7 @@ class MainScene(tk.Frame):
             return
 
         logs = []
-
+        #Thêm một hàm collector để thu thập log từ scheduler và hiển thị trong khung kết quả
         def collector(msg):
             logs.append(str(msg))
 
@@ -256,6 +262,6 @@ def main():
     app.mainloop()
 
 
-
+#Điểm vào ứng dụng chính
 if __name__ == "__main__":
     main()

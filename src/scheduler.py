@@ -1,57 +1,5 @@
 from fat32_reader import FAT32Reader
 
-#Hàm để chọn file txt từ FAT32 và hiển thị thông tin chi tiết của file đó
-def choose_txt_file(reader, input_fn=input, print_fn=print):
-	txt_files = reader.list_all_txt_files()
-	if not txt_files:
-		print_fn("No .txt file found.")
-		return None
-
-	print_fn("All .txt files across disk:")
-	for index, txt_file in enumerate(txt_files, 1):
-		print_fn(f"{index}. {txt_file['path']}")
-
-	selected_index = input_fn("Select a .txt file by number: ").strip()
-	if not selected_index.isdigit():
-		print_fn("Invalid selection.")
-		return None
-
-	selected_number = int(selected_index)
-	if selected_number < 1 or selected_number > len(txt_files):
-		print_fn("Invalid selection.")
-		return None
-
-	return txt_files[selected_number - 1]["path"]
-
-#Hàm để hiển thị thông tin chi tiết của file txt đã chọn
-def print_selected_txt_summary(reader, txt_path, print_fn=print):
-	details = reader.get_txt_file_details(txt_path)
-	if not details:
-		print_fn("Cannot load selected txt file details.")
-		return None
-
-	print_fn("\nSelected TXT File Details")
-	print_fn("-------------------------")
-	print_fn(f"Name: {details['name']}")
-	print_fn(f"Date created: {details['created_date']}")
-	print_fn(f"Time created: {details['created_time']}")
-	print_fn(f"Total Size: {details['size']} bytes")
-	return details
-
-
-def run_txt_selection_flow(source_path, input_fn=input, print_fn=print):
-	reader = FAT32Reader(source_path)
-	boot_info = reader.read_boot_sector()
-	if not isinstance(boot_info, dict):
-		print_fn(boot_info)
-		return None
-
-	txt_path = choose_txt_file(reader, input_fn=input_fn, print_fn=print_fn)
-	if not txt_path:
-		return None
-
-	return print_selected_txt_summary(reader, txt_path, print_fn=print_fn)
-
 #Hàm để parse input lab01
 def parse_lab01_text(text):
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -88,30 +36,6 @@ def parse_lab01_text(text):
 
     return queue_info, process_table
 
-def parse_lab01_input(file_path):
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return parse_lab01_text(f.read())
-
-#Hàm parse file txt để lấy thông tin về queue và process table cho lab01
-def parse_scheduler_config_file(file_path):
-    #Lấy queue
-    queue_info,_ = parse_lab01_input(file_path)
-    return queue_info
-
-def parse_process_table(file_path):
-    #lấy process table
-    _, process_table = parse_lab01_input(file_path)
-    return process_table
-
-def build_queue_lookup(queue_info):
-    return {
-        queue['queue_id']: {
-            'time_slice': queue['time_slice'],
-            'algorithm': queue['algorithm'].upper(),
-        }
-        for queue in queue_info
-    }
-
 #Load file txt input.txt
 def load_lab01_from_txt_file(reader, txt_path):
     txt_files = reader.list_all_txt_files()
@@ -137,6 +61,7 @@ def normalize_queue_info(queue_info):
         })
     normalized_queues.sort(key=lambda x: int(x['queue_id'][1:]) if x['queue_id'][1:].isdigit() else x['queue_id'])
     return normalized_queues
+
 #Chuẩn hóa process table để đảm bảo thứ tự và định dạng nhất quán
 def normalize_process_table(process_table):
     # Chuẩn hóa thông tin process table
@@ -152,17 +77,6 @@ def normalize_process_table(process_table):
     normalized_processes.sort(key=lambda x: (x['arrival_time'], x['process_id']))
     return normalized_processes
 
-def attach_queue_metadata(process_table, queue_lookup):
-    enriched = []
-    for process in process_table:
-        queue_id = process['queue_id']
-        queue_config = queue_lookup.get(queue_id, {})
-        enriched.append({
-            **process,
-            'algorithm': queue_config.get('algorithm', 'UNKNOWN'),
-            'time_slice': queue_config.get('time_slice'),
-        })
-    return enriched
 
 def normalize_timeline(timeline):
     normalized = []
@@ -177,126 +91,7 @@ def queue_sort_key(queue_id):
     digits = ''.join(ch for ch in queue_id if ch.isdigit())
     return int(digits) if digits else queue_id
 
-def build_queue_groups(queue_info, process_table):
-    groups = {}
-    for queue in queue_info:
-        groups[queue['queue_id']] = {
-            'queue_id': queue['queue_id'],
-            'algorithm': queue['algorithm'].upper(),
-            'time_slice': queue['time_slice'],
-            'processes': [],
-        }
-
-    for process in process_table:
-        queue_id = process.get('queue_id')
-        if queue_id not in groups:
-            groups[queue_id] = {
-                'queue_id': queue_id,
-                'algorithm': 'UNKNOWN',
-                'time_slice': None,
-                'processes': [],
-            }
-        groups[queue_id]['processes'].append(dict(process))
-
-    ordered_queue_ids = sorted(groups.keys(), key=queue_sort_key)
-    return [groups[queue_id] for queue_id in ordered_queue_ids]
-
-#Nhóm hàm thuật toán scheduling
-def run_sjf_algorithm(process_table, start_time=0):
-    # Thuật toán SJF (Shortest Job First) non-preemptive
-    pending = normalize_process_table(process_table)
-    ready_queue = []
-    time = start_time
-    timeline = []
-    completion_times = {}
-    completed_processes = []
-
-    while pending or ready_queue:
-        while pending and pending[0]['arrival_time'] <= time:
-            ready_queue.append(pending.pop(0))
-
-        if not ready_queue:
-            if pending:
-                next_time = pending[0]['arrival_time']
-                if next_time > time:
-                    timeline.append({'pid': 'IDLE', 'start': time, 'end': next_time})
-                    time = next_time
-                continue
-            break
-
-        ready_queue.sort(key=lambda x: (x['burst_time'], x['arrival_time'], x['process_id']))
-        current_process = ready_queue.pop(0)
-        start_time = time
-        end_time = time + current_process['burst_time']
-        timeline.append({'pid': current_process['process_id'], 'start': start_time, 'end': end_time})
-        time = end_time
-
-        completion_times[current_process['process_id']] = end_time
-        completed_processes.append(current_process)
-
-    return {
-        'timeline': normalize_timeline(timeline),
-        'completion_times': completion_times,
-        'completed_processes': completed_processes,
-    }
-
-def run_srtn_algorithm(process_table, start_time=0):
-    # Thuật toán SRTN (Shortest Remaining Time Next)
-    pending = normalize_process_table(process_table)
-    for process in pending:
-        process['remaining_time'] = process['burst_time']
-
-    ready_queue = []
-    time = start_time
-    timeline = []
-    completion_times = {}
-    active_pid = None
-    active_start = None
-
-    def close_active_segment(end_time):
-        nonlocal active_pid, active_start
-        if active_pid is not None and active_start is not None and end_time > active_start:
-            timeline.append({'pid': active_pid, 'start': active_start, 'end': end_time})
-        active_pid = None
-        active_start = None
-
-    while pending or ready_queue:
-        while pending and pending[0]['arrival_time'] <= time:
-            ready_queue.append(pending.pop(0))
-
-        if not ready_queue:
-            close_active_segment(time)
-            if pending:
-                next_time = pending[0]['arrival_time']
-                if next_time > time:
-                    timeline.append({'pid': 'IDLE', 'start': time, 'end': next_time})
-                    time = next_time
-                continue
-            break
-
-        ready_queue.sort(key=lambda x: (x['remaining_time'], x['arrival_time'], x['process_id']))
-        current_process = ready_queue[0]
-
-        if active_pid != current_process['process_id']:
-            close_active_segment(time)
-            active_pid = current_process['process_id']
-            active_start = time
-
-        current_process['remaining_time'] -= 1
-        time += 1
-
-        if current_process['remaining_time'] == 0:
-            completion_times[current_process['process_id']] = time
-            ready_queue.pop(0)
-            close_active_segment(time)
-
-    close_active_segment(time)
-
-    return {
-        'timeline': normalize_timeline(timeline),
-        'completion_times': completion_times,
-    }
-
+#Hàm thực hiện thuật toán scheduling theo yêu cầu
 def schedule_by_queues(queue_info, process_table):
     normalized_queues = normalize_queue_info(queue_info)
     base_processes = normalize_process_table(process_table)
@@ -466,13 +261,14 @@ def schedule_by_queues(queue_info, process_table):
         'average_turnaround_time': avg_tat,
     }
 
+#Hàm tính TT
 def compute_turnaround_times(process_table, completion_times):
     return {
         process['process_id']: completion_times[process['process_id']] - process['arrival_time']
         for process in process_table
         if process['process_id'] in completion_times
     }
-
+#Hàm tính WT
 def compute_waiting_times(process_table, turnaround_times):
     return {
         process['process_id']: turnaround_times[process['process_id']] - process['burst_time']
@@ -522,6 +318,7 @@ def render_ascii_gantt_chart(timeline):
         "".join(time_line_parts),
     ])
 
+#Hàm để hiển thị kết quả của quá trình scheduling
 def print_process_metrics(process_table, waiting_times, completion_times, turnaround_times, queue_info=None, print_fn=print):
     header = f"{'Process':<10}{'Queue ID':<10}{'Arrival Time':<15}{'Burst Time':<15}{'Completion Time':<18}{'Turnaround Time':<18}{'Waiting Time':<15}{'Algorithm':<15}"
     print_fn(header)
@@ -573,6 +370,7 @@ def print_schedule_result(schedule_result, print_fn=print):
     print_fn(f"\nAverage Waiting Time: {schedule_result['average_waiting_time']:.2f}")
     print_fn(f"Average Turnaround Time: {schedule_result['average_turnaround_time']:.2f}")
 
+#Hàm schdule 
 def run_scheduler_for_selected_txt(reader, txt_path, print_fn=print):
     selected, queue_info, process_table = load_lab01_from_txt_file(reader, txt_path)
     if not selected:
@@ -594,21 +392,3 @@ def run_scheduler_for_selected_txt(reader, txt_path, print_fn=print):
         **schedule_result,
     }
 
-def run_lab01_from_image(source_path, input_fn=input, print_fn=print):
-    reader = FAT32Reader(source_path)
-    boot_info = reader.read_boot_sector()
-    if not isinstance(boot_info, dict):
-        print_fn(boot_info)
-        return None
-
-    txt_path = choose_txt_file(reader, input_fn=input_fn, print_fn=print_fn)
-    if not txt_path:
-        return None
-
-    return run_scheduler_for_selected_txt(reader, txt_path, print_fn=print_fn)
-
-
-#Hàm để test code
-if __name__ == "__main__":
-    source_path = r"C:\Users\Admin\Downloads\fat32_test.img"
-    run_lab01_from_image(source_path)
